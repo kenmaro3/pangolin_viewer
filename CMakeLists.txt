@@ -1,12 +1,49 @@
 cmake_minimum_required(VERSION 3.1)
 project(pangolin_viewer LANGUAGES CXX C)
 
+# OpenMP
+if(APPLE)
+    # On macOS, use Homebrew's OpenMP
+    execute_process(COMMAND brew --prefix libomp
+                    OUTPUT_VARIABLE OpenMP_HOME
+                    OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(EXISTS "${OpenMP_HOME}")
+        set(OpenMP_C_FLAGS "-Xpreprocessor -fopenmp -I${OpenMP_HOME}/include")
+        set(OpenMP_CXX_FLAGS "-Xpreprocessor -fopenmp -I${OpenMP_HOME}/include")
+        set(OpenMP_C_LIB_NAMES "omp")
+        set(OpenMP_CXX_LIB_NAMES "omp")
+        set(OpenMP_omp_LIBRARY "${OpenMP_HOME}/lib/libomp.dylib")
+        link_directories("${OpenMP_HOME}/lib")
+        
+        # Add these lines for CMake to recognize OpenMP flags
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_C_FLAGS}")
+
+        # Add these for CMake to recognize OpenMP libraries
+        set(CMAKE_REQUIRED_LIBRARIES "${OpenMP_omp_LIBRARY}")
+    else()
+        message(FATAL_ERROR "OpenMP not found!")
+    endif()
+else()
+    find_package(OpenMP REQUIRED)
+    if(NOT OpenMP_FOUND)
+        message(FATAL_ERROR "OpenMP not found!")
+    endif()
+endif()
+
 # ----- Find dependencies -----
 
-find_package(stella_vslam REQUIRED)
+# Manually specify GLEW paths
+set(GLEW_INCLUDE_DIRS "/opt/homebrew/include")
+set(GLEW_LIBRARIES "/opt/homebrew/lib/libGLEW.dylib")
 
-# Pangolin
+find_package(stella_vslam REQUIRED)
 find_package(Pangolin REQUIRED)
+
+# GLEW
+include_directories(${GLEW_INCLUDE_DIRS})
+link_directories(${GLEW_LIBRARIES})
 
 # ----- Set build type -----
 
@@ -37,7 +74,8 @@ target_include_directories(pangolin_viewer
     PUBLIC
     "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include/>"
     "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/3rd/tinycolormap/include>"
-    "$<INSTALL_INTERFACE:include/>")
+    "$<INSTALL_INTERFACE:include/>"
+    ${GLEW_INCLUDE_DIRS})
 
 if(${Pangolin_VERSION} VERSION_GREATER 0.5)
     target_link_libraries(pangolin_viewer
@@ -45,13 +83,19 @@ if(${Pangolin_VERSION} VERSION_GREATER 0.5)
         stella_vslam::stella_vslam
         opencv_highgui
         pango_display
-        pango_opengl)
+        pango_opengl
+        ${OpenMP_omp_LIBRARY}
+        ${GLEW_LIBRARIES}
+    )
 else()
     target_link_libraries(pangolin_viewer
         PUBLIC
         stella_vslam::stella_vslam
         opencv_highgui
-        pangolin)
+        pangolin
+        ${OpenMP_omp_LIBRARY}
+        ${GLEW_LIBRARIES}
+    )
 endif()
 
 # ----- Install configuration -----
@@ -98,3 +142,4 @@ install(TARGETS pangolin_viewer
 file(GLOB HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/include/pangolin_viewer/*.h")
 install(FILES ${HEADERS}
     DESTINATION ${PANGOLIN_VIEWER_INCLUDE_INSTALL_DIR})
+
